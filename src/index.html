@@ -1,17 +1,551 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="styles.css">
-  <title>Vanilla JavaScript App</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wear OS 센서 대시보드</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+        .header {
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 1.5rem 0;
+            margin-bottom: 2rem;
+        }
+        .sensor-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-left: 4px solid;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .live-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #28a745;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 600;
+            margin: 0.5rem 0;
+        }
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        .metric-unit {
+            font-size: 1rem;
+            color: #6c757d;
+        }
+        table {
+            font-size: 0.9rem;
+        }
+        .gps-info {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            padding: 1rem;
+        }
+    </style>
 </head>
-
 <body>
-  <main>
-    <h1>Vanilla JavaScript App</h1>
-  </main>
-</body>
+    <!-- 헤더 -->
+    <div class="header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="mb-1">⌚ Wear OS 센서 대시보드</h1>
+                    <p class="text-muted mb-0">실시간 센서 데이터 모니터링</p>
+                </div>
+                <button id="toggleLive" class="btn btn-success">
+                    <span class="live-indicator"></span>실시간 ON
+                </button>
+            </div>
+        </div>
+    </div>
 
+    <div class="container">
+        <!-- 주요 지표 카드 -->
+        <div class="row mb-4">
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="sensor-card" style="border-left-color: #dc3545;">
+                    <div class="metric-label">심박수</div>
+                    <div class="metric-value">
+                        <span id="heartRateValue">75</span>
+                        <span class="metric-unit">bpm</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="sensor-card" style="border-left-color: #0d6efd;">
+                    <div class="metric-label">걸음 수</div>
+                    <div class="metric-value">
+                        <span id="stepsValue">0</span>
+                        <span class="metric-unit">steps</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="sensor-card" style="border-left-color: #6610f2;">
+                    <div class="metric-label">기압</div>
+                    <div class="metric-value">
+                        <span id="pressureValue">1013</span>
+                        <span class="metric-unit">hPa</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="sensor-card" style="border-left-color: #fd7e14;">
+                    <div class="metric-label">주변광</div>
+                    <div class="metric-value">
+                        <span id="lightValue">200</span>
+                        <span class="metric-unit">lux</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 가속도계 차트 -->
+        <div class="chart-container">
+            <h3 class="mb-1">가속도계 (Accelerometer)</h3>
+            <p class="text-muted small mb-3">3축 가속도 데이터 (m/s²)</p>
+            <canvas id="accelChart" height="80"></canvas>
+        </div>
+
+        <!-- 자이로스코프 차트 -->
+        <div class="chart-container">
+            <h3 class="mb-1">자이로스코프 (Gyroscope)</h3>
+            <p class="text-muted small mb-3">3축 각속도 데이터 (rad/s)</p>
+            <canvas id="gyroChart" height="80"></canvas>
+        </div>
+
+        <div class="row">
+            <!-- 심박수 차트 -->
+            <div class="col-lg-6 mb-4">
+                <div class="chart-container">
+                    <h3 class="mb-1">심박수 (Heart Rate)</h3>
+                    <p class="text-muted small mb-3">분당 심박수 (bpm)</p>
+                    <canvas id="heartChart" height="120"></canvas>
+                </div>
+            </div>
+
+            <!-- 걸음 수 차트 -->
+            <div class="col-lg-6 mb-4">
+                <div class="chart-container">
+                    <h3 class="mb-1">걸음 수 (Step Counter)</h3>
+                    <p class="text-muted small mb-3">누적 걸음 수</p>
+                    <canvas id="stepsChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 자기장 센서 차트 -->
+        <div class="chart-container">
+            <h3 class="mb-1">자기장 센서 (Magnetometer)</h3>
+            <p class="text-muted small mb-3">3축 자기장 강도 (µT)</p>
+            <canvas id="magnetChart" height="80"></canvas>
+        </div>
+
+        <div class="row">
+            <!-- 기압계 차트 -->
+            <div class="col-lg-6 mb-4">
+                <div class="chart-container">
+                    <h3 class="mb-1">기압계 (Barometer)</h3>
+                    <p class="text-muted small mb-3">대기압 (hPa)</p>
+                    <canvas id="pressureChart" height="120"></canvas>
+                </div>
+            </div>
+
+            <!-- 주변광 센서 차트 -->
+            <div class="col-lg-6 mb-4">
+                <div class="chart-container">
+                    <h3 class="mb-1">주변광 센서 (Ambient Light)</h3>
+                    <p class="text-muted small mb-3">조도 (lux)</p>
+                    <canvas id="lightChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- GPS 정보 -->
+        <div class="chart-container">
+            <h3 class="mb-3">📍 GPS 위치 정보</h3>
+            <div class="row">
+                <div class="col-md col-sm-6 mb-3">
+                    <div class="gps-info">
+                        <div class="metric-label">위도</div>
+                        <div class="fw-bold" id="latitude">37.566500°</div>
+                    </div>
+                </div>
+                <div class="col-md col-sm-6 mb-3">
+                    <div class="gps-info">
+                        <div class="metric-label">경도</div>
+                        <div class="fw-bold" id="longitude">126.978000°</div>
+                    </div>
+                </div>
+                <div class="col-md col-sm-6 mb-3">
+                    <div class="gps-info">
+                        <div class="metric-label">고도</div>
+                        <div class="fw-bold" id="altitude">50.0 m</div>
+                    </div>
+                </div>
+                <div class="col-md col-sm-6 mb-3">
+                    <div class="gps-info">
+                        <div class="metric-label">속도</div>
+                        <div class="fw-bold" id="speed">5.0 km/h</div>
+                    </div>
+                </div>
+                <div class="col-md col-sm-6 mb-3">
+                    <div class="gps-info">
+                        <div class="metric-label">정확도</div>
+                        <div class="fw-bold" id="accuracy">5.0 m</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 현재 센서 값 테이블 -->
+        <div class="chart-container">
+            <h3 class="mb-3">현재 센서 값</h3>
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead class="table-light">
+                        <tr>
+                            <th>센서</th>
+                            <th>X / 값</th>
+                            <th>Y</th>
+                            <th>Z</th>
+                            <th>단위</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sensorTable">
+                        <tr>
+                            <td>가속도계</td>
+                            <td id="accelX">0.00</td>
+                            <td id="accelY">0.00</td>
+                            <td id="accelZ">9.80</td>
+                            <td class="text-muted">m/s²</td>
+                        </tr>
+                        <tr>
+                            <td>자이로스코프</td>
+                            <td id="gyroX">0.000</td>
+                            <td id="gyroY">0.000</td>
+                            <td id="gyroZ">0.000</td>
+                            <td class="text-muted">rad/s</td>
+                        </tr>
+                        <tr>
+                            <td>자기장</td>
+                            <td id="magnetX">0.0</td>
+                            <td id="magnetY">0.0</td>
+                            <td id="magnetZ">-40.0</td>
+                            <td class="text-muted">µT</td>
+                        </tr>
+                        <tr>
+                            <td>심박수</td>
+                            <td id="heartRateTable">75</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="text-muted">bpm</td>
+                        </tr>
+                        <tr>
+                            <td>기압</td>
+                            <td id="pressureTable">1013.0</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="text-muted">hPa</td>
+                        </tr>
+                        <tr>
+                            <td>주변광</td>
+                            <td id="lightTable">200</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="text-muted">lux</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 푸터 -->
+    <footer class="bg-white border-top mt-5 py-4">
+        <div class="container">
+            <p class="text-center text-muted mb-0">Wear OS 센서 대시보드 - 샘플 데이터 시각화</p>
+        </div>
+    </footer>
+
+    <script>
+        // 전역 변수
+        let isLive = true;
+        let dataIndex = 0;
+        let charts = {};
+        const maxDataPoints = 30;
+
+        // 차트 데이터 저장
+        const chartData = {
+            labels: [],
+            accelX: [], accelY: [], accelZ: [],
+            gyroX: [], gyroY: [], gyroZ: [],
+            heartRate: [],
+            steps: [],
+            magnetX: [], magnetY: [], magnetZ: [],
+            pressure: [],
+            light: []
+        };
+
+        // 센서 데이터 생성 함수
+        function generateSensorData(i) {
+            return {
+                accelX: (Math.sin(i * 0.1) * 2 + Math.random() * 0.5).toFixed(2),
+                accelY: (Math.cos(i * 0.1) * 2 + Math.random() * 0.5).toFixed(2),
+                accelZ: (9.8 + Math.random() * 0.3).toFixed(2),
+                gyroX: (Math.sin(i * 0.2) * 0.5 + Math.random() * 0.1).toFixed(3),
+                gyroY: (Math.cos(i * 0.2) * 0.5 + Math.random() * 0.1).toFixed(3),
+                gyroZ: (Math.random() * 0.2 - 0.1).toFixed(3),
+                heartRate: Math.floor(70 + Math.sin(i * 0.05) * 10 + Math.random() * 5),
+                steps: Math.floor(i * 2 + Math.random() * 3),
+                pressure: (1013 + Math.sin(i * 0.02) * 5 + Math.random() * 2).toFixed(1),
+                light: Math.floor(200 + Math.sin(i * 0.15) * 100 + Math.random() * 50),
+                magnetX: (Math.sin(i * 0.08) * 30 + Math.random() * 5).toFixed(1),
+                magnetY: (Math.cos(i * 0.08) * 30 + Math.random() * 5).toFixed(1),
+                magnetZ: (-40 + Math.random() * 10).toFixed(1)
+            };
+        }
+
+        // GPS 데이터 생성
+        function generateGPSData() {
+            return {
+                latitude: (37.5665 + (Math.random() - 0.5) * 0.01).toFixed(6),
+                longitude: (126.9780 + (Math.random() - 0.5) * 0.01).toFixed(6),
+                altitude: (50 + Math.random() * 10).toFixed(1),
+                speed: (5 + Math.random() * 3).toFixed(1),
+                accuracy: (5 + Math.random() * 5).toFixed(1)
+            };
+        }
+
+        // 차트 초기화
+        function initCharts() {
+            // 가속도계 차트
+            charts.accel = new Chart(document.getElementById('accelChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [
+                        { label: 'X축', data: chartData.accelX, borderColor: '#dc3545', tension: 0.4 },
+                        { label: 'Y축', data: chartData.accelY, borderColor: '#0d6efd', tension: 0.4 },
+                        { label: 'Z축', data: chartData.accelZ, borderColor: '#198754', tension: 0.4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } } }
+            });
+
+            // 자이로스코프 차트
+            charts.gyro = new Chart(document.getElementById('gyroChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [
+                        { label: 'X축', data: chartData.gyroX, borderColor: '#fd7e14', tension: 0.4 },
+                        { label: 'Y축', data: chartData.gyroY, borderColor: '#6610f2', tension: 0.4 },
+                        { label: 'Z축', data: chartData.gyroZ, borderColor: '#d63384', tension: 0.4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } } }
+            });
+
+            // 심박수 차트
+            charts.heart = new Chart(document.getElementById('heartChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{ label: 'BPM', data: chartData.heartRate, borderColor: '#dc3545', backgroundColor: 'rgba(220, 53, 69, 0.2)', fill: true, tension: 0.4 }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, scales: { y: { min: 60, max: 90 } } }
+            });
+
+            // 걸음 수 차트
+            charts.steps = new Chart(document.getElementById('stepsChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{ label: 'Steps', data: chartData.steps, borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.2)', fill: true, tension: 0.4 }]
+                },
+                options: { responsive: true, maintainAspectRatio: true }
+            });
+
+            // 자기장 차트
+            charts.magnet = new Chart(document.getElementById('magnetChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [
+                        { label: 'X축', data: chartData.magnetX, borderColor: '#0dcaf0', tension: 0.4 },
+                        { label: 'Y축', data: chartData.magnetY, borderColor: '#84cc16', tension: 0.4 },
+                        { label: 'Z축', data: chartData.magnetZ, borderColor: '#f97316', tension: 0.4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } } }
+            });
+
+            // 기압 차트
+            charts.pressure = new Chart(document.getElementById('pressureChart'), {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{ label: 'hPa', data: chartData.pressure, borderColor: '#6610f2', tension: 0.4 }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, scales: { y: { min: 1005, max: 1020 } } }
+            });
+
+            // 주변광 차트
+            charts.light = new Chart(document.getElementById('lightChart'), {
+                type: 'bar',
+                data: {
+                    labels: chartData.labels.slice(-15),
+                    datasets: [{ label: 'Lux', data: chartData.light.slice(-15), backgroundColor: '#fd7e14' }]
+                },
+                options: { responsive: true, maintainAspectRatio: true }
+            });
+        }
+
+        // 데이터 업데이트
+        function updateData() {
+            const time = new Date().toLocaleTimeString('ko-KR');
+            const data = generateSensorData(dataIndex);
+            const gps = generateGPSData();
+
+            // 차트 데이터 추가
+            chartData.labels.push(time);
+            chartData.accelX.push(parseFloat(data.accelX));
+            chartData.accelY.push(parseFloat(data.accelY));
+            chartData.accelZ.push(parseFloat(data.accelZ));
+            chartData.gyroX.push(parseFloat(data.gyroX));
+            chartData.gyroY.push(parseFloat(data.gyroY));
+            chartData.gyroZ.push(parseFloat(data.gyroZ));
+            chartData.heartRate.push(data.heartRate);
+            chartData.steps.push(data.steps);
+            chartData.magnetX.push(parseFloat(data.magnetX));
+            chartData.magnetY.push(parseFloat(data.magnetY));
+            chartData.magnetZ.push(parseFloat(data.magnetZ));
+            chartData.pressure.push(parseFloat(data.pressure));
+            chartData.light.push(data.light);
+
+            // 데이터 포인트 제한
+            if (chartData.labels.length > maxDataPoints) {
+                chartData.labels.shift();
+                chartData.accelX.shift();
+                chartData.accelY.shift();
+                chartData.accelZ.shift();
+                chartData.gyroX.shift();
+                chartData.gyroY.shift();
+                chartData.gyroZ.shift();
+                chartData.heartRate.shift();
+                chartData.steps.shift();
+                chartData.magnetX.shift();
+                chartData.magnetY.shift();
+                chartData.magnetZ.shift();
+                chartData.pressure.shift();
+                chartData.light.shift();
+            }
+
+            // UI 업데이트
+            document.getElementById('heartRateValue').textContent = data.heartRate;
+            document.getElementById('stepsValue').textContent = data.steps;
+            document.getElementById('pressureValue').textContent = data.pressure;
+            document.getElementById('lightValue').textContent = data.light;
+
+            document.getElementById('accelX').textContent = data.accelX;
+            document.getElementById('accelY').textContent = data.accelY;
+            document.getElementById('accelZ').textContent = data.accelZ;
+            document.getElementById('gyroX').textContent = data.gyroX;
+            document.getElementById('gyroY').textContent = data.gyroY;
+            document.getElementById('gyroZ').textContent = data.gyroZ;
+            document.getElementById('magnetX').textContent = data.magnetX;
+            document.getElementById('magnetY').textContent = data.magnetY;
+            document.getElementById('magnetZ').textContent = data.magnetZ;
+            document.getElementById('heartRateTable').textContent = data.heartRate;
+            document.getElementById('pressureTable').textContent = data.pressure;
+            document.getElementById('lightTable').textContent = data.light;
+
+            document.getElementById('latitude').textContent = gps.latitude + '°';
+            document.getElementById('longitude').textContent = gps.longitude + '°';
+            document.getElementById('altitude').textContent = gps.altitude + ' m';
+            document.getElementById('speed').textContent = gps.speed + ' km/h';
+            document.getElementById('accuracy').textContent = gps.accuracy + ' m';
+
+            // 차트 업데이트
+            Object.values(charts).forEach(chart => {
+                if (chart.config.type === 'bar') {
+                    chart.data.labels = chartData.labels.slice(-15);
+                    chart.data.datasets[0].data = chartData.light.slice(-15);
+                }
+                chart.update('none');
+            });
+
+            dataIndex++;
+        }
+
+        // 실시간 토글
+        document.getElementById('toggleLive').addEventListener('click', function() {
+            isLive = !isLive;
+            this.className = isLive ? 'btn btn-success' : 'btn btn-secondary';
+            this.innerHTML = isLive 
+                ? '<span class="live-indicator"></span>실시간 ON'
+                : '실시간 OFF';
+        });
+
+        // 초기화
+        window.addEventListener('load', function() {
+            // 초기 데이터 생성
+            for (let i = 0; i < maxDataPoints; i++) {
+                const time = new Date(Date.now() - (maxDataPoints - i) * 1000).toLocaleTimeString('ko-KR');
+                const data = generateSensorData(i);
+                
+                chartData.labels.push(time);
+                chartData.accelX.push(parseFloat(data.accelX));
+                chartData.accelY.push(parseFloat(data.accelY));
+                chartData.accelZ.push(parseFloat(data.accelZ));
+                chartData.gyroX.push(parseFloat(data.gyroX));
+                chartData.gyroY.push(parseFloat(data.gyroY));
+                chartData.gyroZ.push(parseFloat(data.gyroZ));
+                chartData.heartRate.push(data.heartRate);
+                chartData.steps.push(data.steps);
+                chartData.magnetX.push(parseFloat(data.magnetX));
+                chartData.magnetY.push(parseFloat(data.magnetY));
+                chartData.magnetZ.push(parseFloat(data.magnetZ));
+                chartData.pressure.push(parseFloat(data.pressure));
+                chartData.light.push(data.light);
+            }
+            
+            dataIndex = maxDataPoints;
+            initCharts();
+            
+            // 1초마다 업데이트
+            setInterval(function() {
+                if (isLive) {
+                    updateData();
+                }
+            }, 1000);
+        });
+    </script>
+</body>
 </html>
