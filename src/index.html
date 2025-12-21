@@ -994,5 +994,19 @@
             });
         });
     </script>
+    <!-- SignalR CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
+    <script>
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/api")
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on("sensorUpdate", msg => {
+            console.log("받음:", msg);
+        });
+
+        connection.start();
+    </script>
 </body>
 </html>
